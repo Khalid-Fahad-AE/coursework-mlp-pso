@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 from pathlib import Path
 
@@ -17,17 +18,31 @@ from mlp import MLPBuilder
 from pso import NearestNeighbourInformantSelection, Population, RandomInformantSelection
 
 
-def run_experiment(strategy_name: str, seed: int, x_train: np.ndarray, y_train: np.ndarray,
-                   x_test: np.ndarray, y_test_labels: np.ndarray, class_count: int) -> dict:
-    y_train_one_hot = one_hot(y_train, class_count)
-    builder = MLPBuilder().set_dataset(x_train, y_train_one_hot).set_configuration({
+def run_experiment(
+    strategy_name: str,
+    seed: int,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    task: str,
+    class_count: int,
+) -> dict:
+    y_train_for_network = (
+        y_train.reshape(-1, 1)
+        if task == "binary_classification"
+        else one_hot(y_train, class_count)
+    )
+    builder = MLPBuilder().set_dataset(x_train, y_train_for_network).set_configuration({
         "hidden_layers": [8, 5],
         "activations": ["tanh", "sigmoid"],
-        "task": "multiclass_classification",
+        "task": task,
         "seed": seed,
     })
     network, loss = builder.build()
-    fitness = MLPFitnessAdapter(network, loss, x_train, y_train_one_hot)
+    fitness = MLPFitnessAdapter(network, loss, x_train, y_train_for_network)
     strategy = (
         RandomInformantSelection(np.random.default_rng(seed + 1000))
         if strategy_name == "random"
@@ -48,33 +63,63 @@ def run_experiment(strategy_name: str, seed: int, x_train: np.ndarray, y_train: 
     )
     best_position, best_loss = population.optimise()
     network.set_parameters(best_position)
-    predicted_labels = np.argmax(network.predict(x_test), axis=1)
+    train_predictions = network.predict(x_train)
+    val_predictions = network.predict(x_val)
+    test_predictions = network.predict(x_test)
+    if task == "binary_classification":
+        predicted_labels = (test_predictions.ravel() >= 0.5).astype(int)
+        val_labels = (val_predictions.ravel() >= 0.5).astype(int)
+        train_labels = (train_predictions.ravel() >= 0.5).astype(int)
+    else:
+        predicted_labels = np.argmax(test_predictions, axis=1)
+        val_labels = np.argmax(val_predictions, axis=1)
+        train_labels = np.argmax(train_predictions, axis=1)
     return {
         "strategy": strategy_name,
         "best_training_loss": best_loss,
-        "test_accuracy": accuracy_score(y_test_labels, predicted_labels),
-        "test_precision": precision_score(y_test_labels, predicted_labels, average="macro", zero_division=0),
-        "test_recall": recall_score(y_test_labels, predicted_labels, average="macro", zero_division=0),
-        "test_f1": f1_score(y_test_labels, predicted_labels, average="macro", zero_division=0),
+        "train_accuracy": accuracy_score(y_train, train_labels),
+        "val_accuracy": accuracy_score(y_val, val_labels),
+        "test_accuracy": accuracy_score(y_test, predicted_labels),
+        "test_precision": precision_score(y_test, predicted_labels, average="macro", zero_division=0),
+        "test_recall": recall_score(y_test, predicted_labels, average="macro", zero_division=0),
+        "test_f1": f1_score(y_test, predicted_labels, average="macro", zero_division=0),
         "history": population.history,
     }
 
 
 def main() -> None:
-    x, y = load_dataset()
-    x_train, x_test, y_train, y_test = train_test_split(
-        x, y, test_size=0.2, random_state=42, stratify=y
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--data",
+        type=Path,
+        help="Path to data_banknote_authentication.txt; omit for the Iris demonstration.",
+    )
+    args = parser.parse_args()
+    x, y = load_dataset(args.data)
+    task = "binary_classification" if np.unique(y).size == 2 else "multiclass_classification"
+    x_train, x_temp, y_train, y_temp = train_test_split(
+        x, y, test_size=0.30, random_state=42, stratify=y
+    )
+    x_val, x_test, y_val, y_test = train_test_split(
+        x_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp
     )
     scaler = StandardScaler().fit(x_train)
     x_train = scaler.transform(x_train)
+    x_val = scaler.transform(x_val)
     x_test = scaler.transform(x_test)
     results = [
-        run_experiment(name, 42, x_train, y_train, x_test, y_test, int(np.unique(y).size))
+        run_experiment(
+            name, 42, x_train, y_train, x_val, y_val, x_test, y_test,
+            task, int(np.unique(y).size)
+        )
         for name in ("random", "nearest")
     ]
     output_dir = Path("results")
     output_dir.mkdir(exist_ok=True)
-    fieldnames = ["strategy", "best_training_loss", "test_accuracy", "test_precision", "test_recall", "test_f1"]
+    fieldnames = [
+        "strategy", "best_training_loss", "train_accuracy", "val_accuracy",
+        "test_accuracy", "test_precision", "test_recall", "test_f1",
+    ]
     with (output_dir / "experiment_results.csv").open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
@@ -91,6 +136,7 @@ def main() -> None:
     for result in results:
         print(
             f"{result['strategy']:>7} | loss={result['best_training_loss']:.5f} | "
+            f"train={result['train_accuracy']:.3f} | val={result['val_accuracy']:.3f} | "
             f"accuracy={result['test_accuracy']:.3f} | precision={result['test_precision']:.3f} | "
             f"recall={result['test_recall']:.3f} | f1={result['test_f1']:.3f}"
         )

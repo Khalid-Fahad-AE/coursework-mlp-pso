@@ -7,7 +7,8 @@ This project implements the coursework design:
 - Adapter pattern connecting PSO to the MLP.
 - Builder pattern for constructing the MLP.
 - Strategy pattern for random and nearest-neighbour informants.
-- Iris multiclass experiment, metrics, convergence plot, and comparison table.
+- Banknote binary experiment, metrics, convergence plot, and comparison table.
+- Iris remains available as a smoke-test demo when no dataset path is supplied.
 
 ## 1. Setup
 
@@ -16,7 +17,7 @@ cd coursework_mlp_pso
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python main.py
+python main.py --data data_banknote_authentication.txt
 ```
 
 The script writes:
@@ -26,19 +27,26 @@ The script writes:
 
 ## 2. Dataset
 
-The included example uses Iris from scikit-learn because it is small, reproducible,
-multiclass, and requires no separate download. The MLP itself is still implemented
-from scratch with NumPy.
+The final experiment expects the UCI Banknote Authentication file, usually named
+`data_banknote_authentication.txt`. It must contain four feature columns followed by
+the binary label, with no header. The MLP itself is implemented from scratch with
+NumPy.
 
-To use a course CSV, replace `load_dataset()` in `data.py` so it returns:
+The script uses a stratified 70/15/15 train/validation/test split. The scaler is fit
+on the training subset only. PSO evaluates the full training subset on every fitness
+call; validation and test data are never passed to the adapter.
+
+For a quick smoke test, omit `--data`; the script uses Iris from scikit-learn.
+To use a differently formatted course CSV, update `load_banknote_dataset()` in
+`data.py` so it returns:
 
 ```python
 X: shape (number_of_rows, number_of_features)
 y: shape (number_of_rows,) with integer class labels 0, 1, ...
 ```
 
-Keep the train/test split and scaler fitting in `main.py`; never fit preprocessing
-on the test set.
+Keep the split and scaler fitting in `main.py`; never fit preprocessing on validation
+or test data.
 
 ## 3. Coursework design mapping
 

@@ -5,6 +5,11 @@
 **Module:** Biologically Inspired Computation  
 **Date:** [Submission date]
 
+> **Draft status:** The numerical results in this document are from the Iris
+> smoke-test run and must not be used as final Banknote coursework results. Run
+> `python main.py --data data_banknote_authentication.txt` after adding the
+> required Banknote file, then replace the results and discussion sections.
+
 ## Abstract
 
 This project implements a multilayer perceptron (MLP) from scratch using NumPy and
@@ -14,7 +19,7 @@ interface, while an adapter evaluates candidate MLP parameter vectors using the
 training data. The implementation also demonstrates the Builder pattern for network
 construction and the Strategy pattern for interchangeable informant selection.
 
-The Iris dataset was used as a reproducible three-class classification example. Two
+The Iris dataset was used only as a reproducible three-class smoke-test example. Two
 informant strategies were compared: random informants and Euclidean nearest-neighbour
 informants. Nearest-neighbour PSO achieved the lower training loss (0.87080), while
 random-informant PSO achieved better test performance, with accuracy 0.7667 and
@@ -131,9 +136,9 @@ for both strategies. The independent variable was the informant-selection mechan
 The dependent measurements were best training loss, test accuracy, macro-precision,
 macro-recall, and macro-F1.
 
-The experiment is intentionally a comparison of optimisation behaviour and
-generalisation. Because PSO is stochastic, a stronger study would repeat each
-configuration over several seeds and report means and standard deviations.
+The current Iris run is only a software validation exercise, not the final
+coursework experiment. The final Banknote study should repeat each configuration
+over the requested seeds and report means and standard deviations.
 
 ## 5. Results
 
@@ -191,7 +196,7 @@ deviation, test additional hidden-layer sizes, vary swarm size and iteration cou
 and compare against a gradient-based baseline. A validation set could be used for
 hyperparameter selection while preserving the test set for one final evaluation.
 
-## 8. Conclusion
+## 8. Conclusion for the smoke test
 
 The project successfully implements a generic PSO and connects it to a from-scratch
 MLP through an adapter. Both informant strategies reduce the training loss, with
@@ -199,8 +204,11 @@ nearest-neighbour informants obtaining the lower final training loss. Random inf
 performed better on the held-out test set in the supplied run, showing that optimisation
 of training loss and generalisation are related but not identical objectives.
 
-The result supports the architectural design: PSO can optimise the MLP without
+The smoke-test result supports the architectural design: PSO can optimise the MLP without
 understanding layers, activations, losses, or parameter storage.
+
+These Iris numbers should be replaced before submission with results from the
+Banknote dataset and the required multi-seed experiments.
 
 ## Appendix A: Reproduction commands
 
