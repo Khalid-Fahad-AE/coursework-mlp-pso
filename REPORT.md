@@ -5,106 +5,133 @@
 **Module:** Biologically Inspired Computation  
 **Date:** [Submission date]
 
-> **Draft status:** The numerical results in this document are from the Iris
-> smoke-test run and must not be used as final Banknote coursework results. Run
-> `python main.py --data data_banknote_authentication.txt` after adding the
-> required Banknote file, then replace the results and discussion sections.
-
 ## Abstract
 
 This project implements a multilayer perceptron (MLP) from scratch using NumPy and
-optimises its weights and biases with Particle Swarm Optimisation (PSO). The MLP
-and PSO are deliberately independent: PSO receives only a generic fitness-function
-interface, while an adapter evaluates candidate MLP parameter vectors using the
-training data. The implementation also demonstrates the Builder pattern for network
-construction and the Strategy pattern for interchangeable informant selection.
+optimises its parameters using Particle Swarm Optimisation (PSO). The MLP and PSO
+are independent components connected by an adapter. The implementation also uses
+the Builder pattern for network construction and the Strategy pattern for
+interchangeable informant selection.
 
-The Iris dataset was used only as a reproducible three-class smoke-test example. Two
-informant strategies were compared: random informants and Euclidean nearest-neighbour
-informants. Nearest-neighbour PSO achieved the lower training loss (0.87080), while
-random-informant PSO achieved better test performance, with accuracy 0.7667 and
-macro-F1 0.7511. The convergence plot shows that nearest-neighbour selection improved
-more rapidly and reached a lower training loss, but this did not translate into better
-generalisation in this single run.
+The UCI Banknote Authentication dataset was used for binary classification. The
+main comparison used ten random seeds for both random and nearest-neighbour
+informant selection. Random informants achieved mean test accuracy of
+`0.8146 +/- 0.0843` and mean macro-F1 of `0.7939 +/- 0.1118`. Nearest-neighbour
+informants achieved a slightly lower mean training loss, but lower mean test
+accuracy (`0.7942 +/- 0.1049`) and macro-F1 (`0.7618 +/- 0.1623`). A separate
+three-seed sensitivity experiment showed that a wider MLP produced the strongest
+test performance among the tested configurations.
 
 ## 1. Introduction
 
-The objective was to design a generic software system in which PSO can optimise an
-MLP without containing neural-network-specific code. This separation is important
-because the optimisation algorithm should be reusable for other models or mathematical
-fitness functions.
+The objective was to implement a generic PSO that can optimise an MLP without
+containing MLP-specific code. This separation makes the optimiser reusable for
+other models or mathematical functions.
 
-The implemented system follows the required execution sequence:
+The application performs the following steps:
 
-1. Load and split a classification dataset.
-2. Fit preprocessing on the training data only.
-3. Construct an MLP from a configuration.
-4. Adapt the MLP to the generic PSO fitness interface.
-5. Optimise the complete MLP parameter vector using PSO.
-6. Install the best parameters and evaluate on unseen test data.
-7. Compare informant-selection strategies.
+1. Load the Banknote dataset.
+2. Create stratified training, validation, and test sets.
+3. Fit preprocessing on the training set only.
+4. Build the MLP from a configuration.
+5. Adapt the MLP to the generic PSO fitness interface.
+6. Optimise the MLP parameters using PSO.
+7. Evaluate the final parameter vector on validation and test data.
+8. Compare informant strategies and hyperparameters.
 
 ## 2. Dataset and preprocessing
 
-The experiment uses the Iris dataset, which contains 150 observations, four numeric
-features, and three classes. A stratified 80:20 split was used, giving 120 training
-and 30 test observations. Stratification preserves the class proportions in both
-subsets.
+The Banknote Authentication dataset contains 1,372 observations, four continuous
+features, and a binary target indicating authentic or forged banknotes. A
+stratified 70/15/15 split was used:
 
-The four input features were standardised using `StandardScaler`. The scaler was
-fitted only on the training set and then applied to both training and test sets. This
-prevents information from the test set leaking into optimisation or preprocessing.
-Targets were one-hot encoded for categorical cross-entropy.
+| Subset | Rows |
+|---|---:|
+| Training | 960 |
+| Validation | 206 |
+| Test | 206 |
+| Total | 1,372 |
 
-## 3. Software architecture
+Standardisation was fitted using the training subset only. The same fitted
+transformation was then applied to validation and test data. This prevents
+information leakage. The validation set was used for reporting and model
+comparison; the test set was kept separate from PSO optimisation.
 
-### 3.1 MLP component
+## 3. MLP design
 
-The MLP component contains:
-
-- `ActivationFunction`, with `Tanh`, `Sigmoid`, `Softmax`, and `Linear`;
-- `Loss`, with MSE, binary cross-entropy, and categorical cross-entropy;
-- `Layer`, storing weights, biases, and an activation object;
-- `Network`, providing forward propagation and parameter-vector operations;
-- `MLPBuilder`, which constructs a valid architecture from a configuration.
-
-The selected architecture is:
+The final binary-classification architecture is:
 
 ```text
-4 input features -> 8 tanh neurons -> 5 sigmoid neurons -> 3 softmax neurons
+4 input features -> 8 tanh neurons -> 5 sigmoid neurons -> 1 sigmoid neuron
 ```
 
-The output layer has three neurons because the task is multiclass classification.
-Categorical cross-entropy is used as the loss.
+The output neuron produces a probability between zero and one. Binary
+cross-entropy is used as the loss function. The approximate random-guessing
+cross-entropy baseline is `0.693`; the observed optimised losses are below this
+value.
 
-### 3.2 Parameter-vector convention
+### Parameter vector
 
-The network exposes all parameters as one vector. For every layer, the weights are
-flattened first in NumPy C order, followed by the biases. Layers are concatenated
-from input to output. For this architecture:
+Parameters are flattened layer by layer. For each layer, all weights are stored
+first, followed by all biases:
 
 ```text
 Layer 1: 4*8 + 8 = 40 parameters
 Layer 2: 8*5 + 5 = 45 parameters
-Layer 3: 5*3 + 3 = 18 parameters
-Total:             103 parameters
+Layer 3: 5*1 + 1 = 6 parameters
+Total:             91 parameters
 ```
 
-The same ordering is used by `get_parameters()` and `set_parameters()`, making the
-PSO search-space representation unambiguous.
+`get_parameters()` and `set_parameters()` use exactly the same ordering, so every
+PSO position represents one valid complete MLP.
 
-### 3.3 PSO component
+## 4. Software architecture
 
-PSO contains no MLP-specific imports or logic. Its main classes are:
+### MLP component
 
-- `FitnessFunction`: abstract evaluation interface;
-- `Particle`: position, velocity, personal best, fitness, and informants;
-- `Population`: initialisation, evaluation, best updates, and optimisation loop;
-- `InformantSelectionStrategy`: interchangeable selection interface;
+The MLP component contains:
+
+- `ActivationFunction`, `Tanh`, `Sigmoid`, `Softmax`, and `Linear`;
+- `Loss`, `MSE`, `BinaryCrossEntropy`, and `CategoricalCrossEntropy`;
+- `Layer`, which stores weights, biases, and an activation object;
+- `Network`, which performs forward propagation and parameter-vector operations;
+- `MLPBuilder`, which constructs a valid architecture from configuration.
+
+The MLP does not implement gradient descent or PSO.
+
+### PSO component
+
+The generic PSO component contains:
+
+- `FitnessFunction`;
+- `Particle`;
+- `Population`;
+- `InformantSelectionStrategy`;
 - `RandomInformantSelection`;
 - `NearestNeighbourInformantSelection`.
 
-The configured PSO values were:
+PSO operates only on real-valued vectors and scalar fitness values. It does not
+know that the vectors represent neural-network weights.
+
+### Adapter pattern
+
+`MLPFitnessAdapter` implements `FitnessFunction`. For every candidate position it:
+
+1. installs the position in the network;
+2. performs a forward pass on all 960 training rows;
+3. computes binary cross-entropy;
+4. returns one scalar training loss.
+
+Every fitness evaluation uses the complete training set, not a random minibatch.
+Validation and test data are never passed to the adapter.
+
+### Builder and Strategy patterns
+
+The Builder pattern constructs the network from hidden-layer sizes, activation
+names, and task type. The Strategy pattern allows random and nearest-neighbour
+informants to be exchanged without changing `Particle` or `Population`.
+
+## 5. Main PSO settings
 
 | Parameter | Value |
 |---|---:|
@@ -116,110 +143,120 @@ The configured PSO values were:
 | Social coefficient | 1.5 |
 | Step size | 0.05 |
 | Position limit | [-3, 3] |
-| Random seed | 42 |
 
-### 3.4 Adapter component
+The main experiment was repeated with seeds 0 through 9 for each informant
+strategy. The reported values are means and sample standard deviations across
+the ten runs.
 
-`MLPFitnessAdapter` implements `FitnessFunction`. For every candidate vector it:
+## 6. Main ten-seed results
 
-1. installs the vector in the network;
-2. performs a forward pass on `X_train`;
-3. computes categorical cross-entropy against `y_train`;
-4. returns the scalar training loss.
+| Strategy | Training loss | Train accuracy | Validation accuracy | Test accuracy |
+|---|---:|---:|---:|---:|
+| Random | 0.5588 +/- 0.0439 | 0.7811 +/- 0.0858 | 0.7956 +/- 0.0782 | 0.8146 +/- 0.0843 |
+| Nearest-neighbour | 0.5549 +/- 0.0539 | 0.7667 +/- 0.1023 | 0.7791 +/- 0.1090 | 0.7942 +/- 0.1049 |
 
-The adapter never receives test data, so test performance is not used by PSO.
+| Strategy | Test precision | Test recall | Test macro-F1 |
+|---|---:|---:|---:|
+| Random | 0.8540 +/- 0.0461 | 0.7986 +/- 0.0993 | 0.7939 +/- 0.1118 |
+| Nearest-neighbour | 0.8435 +/- 0.0451 | 0.7787 +/- 0.1233 | 0.7618 +/- 0.1623 |
 
-## 4. Experimental method
+Nearest-neighbour informants produced a slightly lower mean training loss, but
+random informants achieved better mean test accuracy, precision, recall, and F1.
+Therefore, selecting the strategy by training loss alone would be misleading.
+The standard deviations also show that results are sensitive to the random seed.
 
-The same MLP architecture, split, preprocessing, PSO settings, and seed were used
-for both strategies. The independent variable was the informant-selection mechanism.
-The dependent measurements were best training loss, test accuracy, macro-precision,
-macro-recall, and macro-F1.
+## 7. Hyperparameter sensitivity experiment
 
-The current Iris run is only a software validation exercise, not the final
-coursework experiment. The final Banknote study should repeat each configuration
-over the requested seeds and report means and standard deviations.
+A separate experiment used three seeds per configuration and compared the baseline
+with a smaller swarm, a longer PSO run, and a wider MLP.
 
-The repository also includes a focused sensitivity experiment comparing the baseline
-against a smaller swarm, a longer PSO run, and a wider MLP. These results should be
-reported separately from the main 10-seed strategy comparison.
+| Configuration | Strategy | Test accuracy | Test macro-F1 |
+|---|---|---:|---:|
+| Baseline | Random | 0.8333 +/- 0.0691 | 0.8221 +/- 0.0780 |
+| Baseline | Nearest | 0.8366 +/- 0.0112 | 0.8310 +/- 0.0080 |
+| Smaller swarm | Random | 0.6262 +/- 0.0591 | 0.5069 +/- 0.1301 |
+| Smaller swarm | Nearest | 0.7249 +/- 0.1339 | 0.6547 +/- 0.2274 |
+| More iterations | Random | 0.8333 +/- 0.0691 | 0.8221 +/- 0.0780 |
+| More iterations | Nearest | 0.8366 +/- 0.0112 | 0.8310 +/- 0.0080 |
+| Wider MLP | Random | 0.8608 +/- 0.0587 | 0.8538 +/- 0.0652 |
+| Wider MLP | Nearest | 0.8544 +/- 0.0825 | 0.8468 +/- 0.0912 |
 
-## 5. Results
+The smaller swarm performed substantially worse, suggesting that population
+diversity is important for this 91-dimensional search space. Increasing the
+iteration budget from 60 to 100 produced almost identical results, indicating
+that the baseline generally converged before the additional iterations. The wider
+MLP achieved the strongest average test performance, although its variability
+should be considered.
 
-| Informant strategy | Best training loss | Accuracy | Macro precision | Macro recall | Macro F1 |
-|---|---:|---:|---:|---:|---:|
-| Random | 0.89218 | 0.7667 | 0.8000 | 0.7667 | 0.7511 |
-| Nearest-neighbour | 0.87080 | 0.6667 | 0.5000 | 0.6667 | 0.5556 |
+The complete precision, recall, loss, and standard-deviation values are stored in
+`results/hyperparameter_summary.csv`.
 
-Nearest-neighbour informants achieved a training loss approximately 2.4% lower than
-random informants:
+## 8. Convergence analysis
 
-```text
-(0.89218 - 0.87080) / 0.89218 * 100 = 2.4%
-```
+The convergence plot shows the best-so-far training loss over PSO iterations. The
+population stores the global best loss after initial evaluation and after each
+iteration. Consequently, the plotted series is non-increasing; a later value
+cannot be worse than an earlier global best.
 
-However, random informants produced the better test result: 10 percentage points
-higher accuracy and approximately 0.1956 higher macro-F1. This indicates that the
-lowest training loss was not the best indicator of test generalisation in this run.
+The ten-seed plot should be interpreted using its mean curve and standard-deviation
+band. A lower training curve does not necessarily imply better test performance,
+as demonstrated by the main random-versus-nearest comparison.
 
-## 6. Convergence analysis
-
-The supplied convergence plot shows both strategies reducing the best-so-far training
-loss over 60 iterations. Nearest-neighbour selection begins a strong decline earlier
-and finishes around 0.8708. Random selection decreases more gradually and plateaus
-around 0.8922.
-
-The plot demonstrates convergence behaviour rather than proof of global optimality.
-The curves are best-so-far values, so they should not increase. The difference between
-training and test results also shows why the test set must remain separate from PSO.
-
-## 7. Critical evaluation
+## 9. Critical evaluation
 
 ### Strengths
 
-- The MLP is implemented with NumPy rather than a neural-network framework.
-- PSO is reusable because it depends only on `FitnessFunction`.
-- Builder, Adapter, and Strategy patterns are explicit in the implementation.
-- Parameter flattening and reconstruction use one consistent convention.
-- Test data is excluded from optimisation.
-- Both required informant strategies are compared.
+- MLP forward propagation is implemented with NumPy.
+- PSO is independent from MLP internals.
+- Builder, Adapter, and Strategy patterns are explicit.
+- Parameter flattening and reconstruction are consistent.
+- Full-batch deterministic fitness evaluation is used.
+- Training-only preprocessing prevents leakage.
+- Both informant strategies and multiple seeds are evaluated.
+- Hyperparameter sensitivity is reported.
 
 ### Limitations
 
-- Results are from one stochastic run for each strategy.
-- The experiment uses a small dataset and a modest PSO budget.
-- PSO requires many full forward-pass evaluations and is computationally expensive.
-- The current comparison changes only informant selection; it does not provide a
-  complete grid search over all MLP and PSO hyperparameters.
-- The selected hyperparameters were not statistically tuned.
+- The main ten-seed experiment still has noticeable run-to-run variability.
+- The hyperparameter sensitivity experiment uses three seeds per configuration,
+  fewer than the main comparison.
+- PSO requires many full forward-pass evaluations.
+- Only a limited selection of architectures and PSO settings was tested.
+- The test set is used for final comparison, so it should not be repeatedly used
+  for tuning in a larger study.
 
-### Improvements
+### Future improvements
 
-Future work should repeat each strategy over multiple seeds, report mean and standard
-deviation, test additional hidden-layer sizes, vary swarm size and iteration count,
-and compare against a gradient-based baseline. A validation set could be used for
-hyperparameter selection while preserving the test set for one final evaluation.
+Future work could use nested validation, more seeds for every hyperparameter
+configuration, confidence intervals, adaptive PSO coefficients, and comparison
+with a gradient-based MLP baseline.
 
-## 8. Conclusion for the smoke test
+## 10. Conclusion
 
-The project successfully implements a generic PSO and connects it to a from-scratch
-MLP through an adapter. Both informant strategies reduce the training loss, with
-nearest-neighbour informants obtaining the lower final training loss. Random informants
-performed better on the held-out test set in the supplied run, showing that optimisation
-of training loss and generalisation are related but not identical objectives.
+The coursework successfully implements a NumPy MLP whose parameters are optimised
+by a generic PSO. The Adapter pattern preserves the separation between the two
+components, while the Builder and Strategy patterns provide flexible construction
+and informant selection.
 
-The smoke-test result supports the architectural design: PSO can optimise the MLP without
-understanding layers, activations, losses, or parameter storage.
+Across ten seeds, random informants gave better average test generalisation even
+though nearest-neighbour informants obtained slightly lower training loss. The
+hyperparameter analysis showed that reducing swarm size harmed performance, extra
+iterations beyond 60 gave little benefit, and a wider MLP produced the strongest
+average test metrics among the tested configurations.
 
-These Iris numbers should be replaced before submission with results from the
-Banknote dataset and the required multi-seed experiments.
-
-## Appendix A: Reproduction commands
+## Appendix: Reproduction commands
 
 ```bash
-git clone https://github.com/Khalid-Fahad-AE/coursework-mlp-pso.git
-cd coursework-mlp-pso
 pip install -r requirements.txt
 python -m unittest discover -s . -p 'test_*.py'
-MPLBACKEND=Agg python main.py
+python run_experiments.py --data data_banknote_authentication.txt
+python run_hyperparameter_experiments.py --data data_banknote_authentication.txt
+```
+
+Generated files:
+
+```text
+results/multi_seed_summary.csv
+results/multi_seed_convergence.png
+results/hyperparameter_summary.csv
 ```
