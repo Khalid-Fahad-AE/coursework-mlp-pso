@@ -29,6 +29,9 @@ def run_experiment(
     y_test: np.ndarray,
     task: str,
     class_count: int,
+    hidden_layers: list[int] | None = None,
+    num_particles: int = 20,
+    num_iterations: int = 60,
 ) -> dict:
     y_train_for_network = (
         y_train.reshape(-1, 1)
@@ -36,7 +39,7 @@ def run_experiment(
         else one_hot(y_train, class_count)
     )
     builder = MLPBuilder().set_dataset(x_train, y_train_for_network).set_configuration({
-        "hidden_layers": [8, 5],
+        "hidden_layers": hidden_layers or [8, 5],
         "activations": ["tanh", "sigmoid"],
         "task": task,
         "seed": seed,
@@ -51,9 +54,9 @@ def run_experiment(
     population = Population(
         fitness_function=fitness,
         informant_strategy=strategy,
-        num_particles=20,
+        num_particles=num_particles,
         num_informants=3,
-        num_iterations=60,
+        num_iterations=num_iterations,
         dimension=network.count_parameters(),
         inertia_weight=0.7,
         cognitive_coefficient=1.5,

@@ -140,6 +140,10 @@ The current Iris run is only a software validation exercise, not the final
 coursework experiment. The final Banknote study should repeat each configuration
 over the requested seeds and report means and standard deviations.
 
+The repository also includes a focused sensitivity experiment comparing the baseline
+against a smaller swarm, a longer PSO run, and a wider MLP. These results should be
+reported separately from the main 10-seed strategy comparison.
+
 ## 5. Results
 
 | Informant strategy | Best training loss | Accuracy | Macro precision | Macro recall | Macro F1 |

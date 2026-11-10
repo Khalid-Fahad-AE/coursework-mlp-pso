@@ -45,6 +45,16 @@ python run_experiments.py --data data_banknote_authentication.txt
 This writes `multi_seed_results.csv`, `multi_seed_summary.csv`, and
 `multi_seed_convergence.png` into `results/`.
 
+Run the focused hyperparameter comparison with:
+
+```bash
+python run_hyperparameter_experiments.py --data data_banknote_authentication.txt
+```
+
+This compares the baseline against a smaller swarm, a longer run, and a wider MLP
+using three seeds per configuration by default. It writes
+`hyperparameter_results.csv` and `hyperparameter_summary.csv`.
+
 For a quick smoke test, omit `--data`; the script uses Iris from scikit-learn.
 To use a differently formatted course CSV, update `load_banknote_dataset()` in
 `data.py` so it returns:
